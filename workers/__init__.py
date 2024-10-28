@@ -172,19 +172,15 @@ def process_schema_change(change_data):
                         current_instances = [
                             inst
                             for inst in state_data["nodes"][instance_type].values()
-                            if inst["parent_id"] == node_id
+                            if inst["parent_id"]
+                            == node_id  # node_id is now hierarchical
                         ]
-
-                        # Remove excess instances if units decreased
-                        if len(current_instances) > units:
-                            for instance in current_instances[units:]:
-                                del state_data["nodes"][instance_type][instance["id"]]
 
                         # Add new instances if units increased
                         while len(current_instances) < units:
                             instance = {
                                 "id": str(uuid.uuid4()),
-                                "parent_id": node_id,
+                                "parent_id": node_id,  # Using hierarchical ID from schema
                                 "status": "available",
                                 "created_at": int(time.time()),
                                 "updated_at": int(time.time()),
@@ -224,6 +220,10 @@ def process_schema_change(change_data):
 def start_worker():
     worker_thread = threading.Thread(target=main_worker, daemon=True)
     worker_thread.start()
+
+
+def generate_instance_id(parent_id: str, instance_number: int) -> str:
+    return f"{parent_id}-i{instance_number}"
 
 
 if __name__ == "__main__":

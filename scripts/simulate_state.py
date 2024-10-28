@@ -5,10 +5,10 @@ import time
 from typing import Dict, List
 
 
-def generate_part_instance(part_id: str, batch_id: str) -> Dict:
+def generate_part_instance(part_id: str, batch_id: str, instance_number: int) -> Dict:
     return {
         "id": str(uuid.uuid4()),
-        "part_id": part_id,
+        "parent_id": part_id,  # This will now be the hierarchical ID from schema
         "batch_id": batch_id,
         "status": "created",
         "location": None,
@@ -88,8 +88,8 @@ def simulate_production_cycle(schema_data: Dict):
         send_schema_change(schema_update)
 
         # Create instances
-        for _ in range(production_quantity):
-            instance = generate_part_instance(part_id, batch["id"])
+        for i in range(production_quantity):
+            instance = generate_part_instance(part_id, batch["id"], i + 1)
             change = {
                 "timestamp": int(time.time()),
                 "type": "state",

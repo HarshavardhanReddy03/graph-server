@@ -72,9 +72,10 @@ def generate_warehouse() -> Dict:
     }
 
 
-def generate_part(level: int) -> Dict:
+def generate_part(level: int, parent_id: str = None, sibling_count: int = 0) -> Dict:
+    part_id = generate_hierarchical_id(parent_id, sibling_count)
     return {
-        "id": str(uuid.uuid4()),
+        "id": part_id,
         "name": f"Part_L{level}_{random.randint(1000, 9999)}",
         "description": f"Manufacturing part level {level}",
         "type": random.choice(["Assembly", "Component", "Raw"]),
@@ -169,31 +170,143 @@ def send_schema_action(
     send_change(change_data)
 
 
+def generate_hierarchical_id(parent_id: str = None, sibling_count: int = 0) -> str:
+    if not parent_id:
+        return str(sibling_count + 1)
+    return f"{parent_id}-{sibling_count + 1}"
+
+
+def get_parent_id(hierarchical_id: str) -> str:
+    parts = hierarchical_id.split("-")
+    if len(parts) <= 1:
+        return None
+    return "-".join(parts[:-1])
+
+
+def get_child_count(max_child_id: str) -> int:
+    if not max_child_id:
+        return 0
+    return int(max_child_id.split("-")[-1])
+
+
 def create_and_send_manufacturing_schema():
     nodes = {
         "BusinessUnit": {},
         "ProductFamily": {},
         "ProductOffering": {},
         "Facility": {},
-        "Parts": {},
         "Supplier": {},
         "Warehouse": {},
+        "Parts": {},
     }
     links = []
 
-    # Create nodes
-    business_units = [generate_business_unit() for _ in range(2)]
-    product_families = [generate_product_family() for _ in range(4)]
-    product_offerings = [generate_product_offering() for _ in range(8)]
-    facilities = [generate_facility() for _ in range(5)]
-    suppliers = [generate_supplier() for _ in range(3)]
-    warehouses = [generate_warehouse() for _ in range(4)]
+    # Generate business units (level 1)
+    business_units = []
+    for i in range(random.randint(2, 4)):
+        bu_id = generate_hierarchical_id(sibling_count=i)
+        bu = {
+            "id": bu_id,
+            "name": f"BU_{random.randint(1000, 9999)}",
+            "description": f"Business Unit {i+1}",
+            "revenue": round(random.uniform(1000000, 5000000), 2),
+            "node_type": "BusinessUnit",
+        }
+        business_units.append(bu)
 
-    # Create parts with levels
+    # Generate product families (level 2)
+    product_families = []
+    for bu in business_units:
+        for j in range(random.randint(2, 4)):
+            pf_id = generate_hierarchical_id(bu["id"], j)
+            pf = {
+                "id": pf_id,
+                "name": f"PF_{random.randint(1000, 9999)}",
+                "revenue": round(random.uniform(100000, 1000000), 2),
+                "node_type": "ProductFamily",
+            }
+            product_families.append(pf)
+
+    # Generate product offerings (level 3)
+    product_offerings = []
+    for pf in product_families:
+        for k in range(random.randint(2, 4)):
+            po_id = generate_hierarchical_id(pf["id"], k)
+            po = {
+                "id": po_id,
+                "name": f"PO_{random.randint(1000, 9999)}",
+                "cost": round(random.uniform(1000, 10000), 2),
+                "demand": random.randint(100, 1000),
+                "node_type": "ProductOffering",
+            }
+            product_offerings.append(po)
+
+    # Generate facilities (level 4)
+    facilities = []
+    for po in product_offerings:
+        for l in range(random.randint(1, 3)):
+            facility_id = generate_hierarchical_id(po["id"], l)
+            facility = {
+                "id": facility_id,
+                "name": f"Facility_{random.randint(1000, 9999)}",
+                "type": random.choice(["Manufacturing", "Assembly", "Distribution"]),
+                "location": f"Location_{random.randint(1, 5)}",
+                "max_capacity": random.randint(5000, 10000),
+                "operating_cost": round(random.uniform(10000, 50000), 2),
+                "node_type": "Facility",
+            }
+            facilities.append(facility)
+
+    # Generate suppliers (level 5)
+    suppliers = []
+    for facility in facilities:
+        for m in range(random.randint(1, 2)):
+            supplier_id = generate_hierarchical_id(facility["id"], m)
+            supplier = {
+                "id": supplier_id,
+                "name": f"Supplier_{random.randint(1000, 9999)}",
+                "location": f"Location_{random.randint(1, 5)}",
+                "reliability": round(random.uniform(0.7, 0.9), 2),
+                "size": random.choice(["Small", "Medium", "Large"]),
+                "node_type": "Supplier",
+            }
+            suppliers.append(supplier)
+
+    # Generate warehouses (level 6)
+    warehouses = []
+    for supplier in suppliers:
+        for n in range(random.randint(1, 2)):
+            warehouse_id = generate_hierarchical_id(supplier["id"], n)
+            warehouse = {
+                "id": warehouse_id,
+                "name": f"WH_{random.randint(1000, 9999)}",
+                "type": random.choice(["Raw", "WIP", "Finished"]),
+                "size": random.choice(["Small", "Medium", "Large"]),
+                "location": f"Location_{random.randint(1, 5)}",
+                "max_capacity": random.randint(5000, 10000),
+                "current_capacity": random.randint(1000, 5000),
+                "safety_stock": random.randint(100, 500),
+                "node_type": "Warehouse",
+            }
+            warehouses.append(warehouse)
+
+    # Generate parts hierarchically
     parts = []
-    for level in range(4):
-        level_parts = [generate_part(level) for _ in range(random.randint(3, 6))]
-        parts.extend(level_parts)
+    for level in range(
+        3, -1, -1
+    ):  # Start from raw materials (level 3) up to finished parts (level 0)
+        if level == 3:
+            # Raw materials - attach to suppliers
+            for supplier in suppliers:
+                for i in range(random.randint(2, 4)):
+                    part = generate_part(level, supplier["id"], i)
+                    parts.append(part)
+        else:
+            # Higher level parts - will be connected to lower level parts
+            for facility in facilities:
+                for i in range(random.randint(2, 4)):
+                    part = generate_part(level, facility["id"], i)
+                    parts.append(part)
 
     # Add nodes to their respective categories
     for bu in business_units:
