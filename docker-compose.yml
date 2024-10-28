@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ./data/livestate:/app/data/livestate
+      - ./data/statearchive:/app/data/statearchive
+      - ./data/schemaarchive:/app/data/schemaarchive
+      - ./data/liveschema:/app/data/liveschema
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - POSTGRES_URL=postgresql://user:password@postgres:5432/deltachanges
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: deltachanges
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - ./data/deltachanges:/var/lib/postgresql/data
+
+volumes:
+  deltachanges:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/deltachanges
+
+  statearchive:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/statearchive
+
+  schemaarchive:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/schemaarchive
+
+  livestate:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/livestate
+
+  liveschema:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/liveschema
