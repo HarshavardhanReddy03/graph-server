@@ -6,6 +6,8 @@ import logging
 import uuid
 import time
 
+from utils.compression import compress_graph_json
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -205,9 +207,11 @@ def process_schema_change(change_data):
         # Archive both
         timestamp = change_data["timestamp"]
         with open(f"{SCHEMAARCHIVE_PATH}/schema_{timestamp}.json", "w") as f:
-            json.dump(schema_data, f, indent=2)
+            compressed_schema = compress_graph_json(schema_data)
+            json.dump(compressed_schema, f, indent=2)
         with open(f"{STATEARCHIVE_PATH}/state_{timestamp}.json", "w") as f:
-            json.dump(state_data, f, indent=2)
+            compressed_state = compress_graph_json(state_data)
+            json.dump(compressed_state, f, indent=2)
 
         return True
 
