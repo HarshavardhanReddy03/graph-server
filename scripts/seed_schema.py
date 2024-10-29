@@ -83,6 +83,7 @@ def generate_part(level: int, parent_id: str = None, sibling_count: int = 0) -> 
         "importance": random.randint(1, 10),
         "level": level,
         "units_in_chain": random.randint(100, 1000),
+        "expected_life": random.randint(365, 365 * 5),
         "node_type": "Parts",
     }
 

@@ -186,6 +186,11 @@ def process_schema_change(change_data):
                                 "status": "available",
                                 "created_at": int(time.time()),
                                 "updated_at": int(time.time()),
+                                "valid_from": int(time.time()),
+                                "valid_to": int(
+                                    time.time()
+                                    + node_data.get("expected_life", 365) * 24 * 60 * 60
+                                ),
                             }
                             state_data["nodes"][instance_type][
                                 instance["id"]

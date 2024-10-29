@@ -21,7 +21,7 @@ def compress_graph_json(data: Dict) -> Dict:
         node_arrays = []
         for node_id, node_data in nodes.items():
             node_values = [node_data[key] for key in template_keys]
-            node_arrays.append([node_id] + node_values)
+            node_arrays.append(node_values)
 
         compressed["data"]["nodes"][node_type] = node_arrays
 

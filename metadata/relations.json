@@ -8,7 +8,8 @@
 				"description": "string",
 				"type": "string",
 				"cost": "float",
-				"importance": "integer"
+				"importance": "integer",
+				"expected_life": "integer"
 			}
 		},
 		"Supplier": {
