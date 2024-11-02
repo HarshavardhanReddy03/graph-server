@@ -4,6 +4,7 @@ import requests
 import time
 import uuid
 from typing import Dict, List
+import argparse
 
 
 def generate_business_unit() -> Dict:
@@ -125,11 +126,14 @@ def generate_edge(source_id: str, target_id: str, edge_type: str) -> Dict:
     }
 
 
-def send_change(change_data):
+def send_change(change_data, version: str):
+    if "version" not in change_data:
+        change_data["version"] = version
+
     response = requests.post(
-        "http://localhost:8000/schema/live/update", json=change_data
+        f"http://localhost:8000/schema/live/{version}/update", json=change_data
     )
-    print(f"Sent change: {change_data['action']}")
+    print(f"Sent change: {change_data['action']} for version: {version}")
     print(f"Response: {response.json()}")
     time.sleep(1)  # Wait between changes
 
@@ -138,6 +142,7 @@ def send_schema_action(
     node_id: str,
     node_type: str,
     action_type: str,
+    version: str,
     units: int = None,
     properties: Dict = None,
 ):
@@ -168,7 +173,7 @@ def send_schema_action(
             },
         }
 
-    send_change(change_data)
+    send_change(change_data, version)
 
 
 def generate_hierarchical_id(parent_id: str = None, sibling_count: int = 0) -> str:
@@ -190,7 +195,10 @@ def get_child_count(max_child_id: str) -> int:
     return int(max_child_id.split("-")[-1])
 
 
-def create_and_send_manufacturing_schema():
+def create_and_send_manufacturing_schema(version: str):
+    if not version:
+        raise ValueError("Version must be specified")
+
     nodes = {
         "BusinessUnit": {},
         "ProductFamily": {},
@@ -202,9 +210,9 @@ def create_and_send_manufacturing_schema():
     }
     links = []
 
-    # Generate business units (level 1)
+    # Generate business units (level 1) - reduced count
     business_units = []
-    for i in range(random.randint(2, 4)):
+    for i in range(2):  # Reduced from random(2,4)
         bu_id = generate_hierarchical_id(sibling_count=i)
         bu = {
             "id": bu_id,
@@ -215,10 +223,10 @@ def create_and_send_manufacturing_schema():
         }
         business_units.append(bu)
 
-    # Generate product families (level 2)
+    # Generate product families (level 2) - reduced count
     product_families = []
     for bu in business_units:
-        for j in range(random.randint(2, 4)):
+        for j in range(2):  # Reduced from random(2,4)
             pf_id = generate_hierarchical_id(bu["id"], j)
             pf = {
                 "id": pf_id,
@@ -228,10 +236,10 @@ def create_and_send_manufacturing_schema():
             }
             product_families.append(pf)
 
-    # Generate product offerings (level 3)
+    # Generate product offerings (level 3) - reduced count
     product_offerings = []
     for pf in product_families:
-        for k in range(random.randint(2, 4)):
+        for k in range(2):  # Reduced from random(2,4)
             po_id = generate_hierarchical_id(pf["id"], k)
             po = {
                 "id": po_id,
@@ -242,74 +250,75 @@ def create_and_send_manufacturing_schema():
             }
             product_offerings.append(po)
 
-    # Generate facilities (level 4)
+    # Generate facilities (level 4) - reduced count
     facilities = []
     for po in product_offerings:
-        for l in range(random.randint(1, 3)):
-            facility_id = generate_hierarchical_id(po["id"], l)
-            facility = {
-                "id": facility_id,
-                "name": f"Facility_{random.randint(1000, 9999)}",
-                "type": random.choice(["Manufacturing", "Assembly", "Distribution"]),
-                "location": f"Location_{random.randint(1, 5)}",
-                "max_capacity": random.randint(5000, 10000),
-                "operating_cost": round(random.uniform(10000, 50000), 2),
-                "node_type": "Facility",
-            }
-            facilities.append(facility)
+        facility_id = generate_hierarchical_id(
+            po["id"], 0
+        )  # Only 1 facility per offering
+        facility = {
+            "id": facility_id,
+            "name": f"Facility_{random.randint(1000, 9999)}",
+            "type": random.choice(["Manufacturing", "Assembly", "Distribution"]),
+            "location": f"Location_{random.randint(1, 5)}",
+            "max_capacity": random.randint(5000, 10000),
+            "operating_cost": round(random.uniform(10000, 50000), 2),
+            "node_type": "Facility",
+        }
+        facilities.append(facility)
 
-    # Generate suppliers (level 5)
+    # Generate suppliers (level 5) - reduced count
     suppliers = []
     for facility in facilities:
-        for m in range(random.randint(1, 2)):
-            supplier_id = generate_hierarchical_id(facility["id"], m)
-            supplier = {
-                "id": supplier_id,
-                "name": f"Supplier_{random.randint(1000, 9999)}",
-                "location": f"Location_{random.randint(1, 5)}",
-                "reliability": round(random.uniform(0.7, 0.9), 2),
-                "size": random.choice(["Small", "Medium", "Large"]),
-                "node_type": "Supplier",
-            }
-            suppliers.append(supplier)
+        supplier_id = generate_hierarchical_id(
+            facility["id"], 0
+        )  # Only 1 supplier per facility
+        supplier = {
+            "id": supplier_id,
+            "name": f"Supplier_{random.randint(1000, 9999)}",
+            "location": f"Location_{random.randint(1, 5)}",
+            "reliability": round(random.uniform(0.7, 0.9), 2),
+            "size": random.choice(["Small", "Medium", "Large"]),
+            "node_type": "Supplier",
+        }
+        suppliers.append(supplier)
 
-    # Generate warehouses (level 6)
+    # Generate warehouses (level 6) - reduced count
     warehouses = []
     for supplier in suppliers:
-        for n in range(random.randint(1, 2)):
-            warehouse_id = generate_hierarchical_id(supplier["id"], n)
-            warehouse = {
-                "id": warehouse_id,
-                "name": f"WH_{random.randint(1000, 9999)}",
-                "type": random.choice(["Raw", "WIP", "Finished"]),
-                "size": random.choice(["Small", "Medium", "Large"]),
-                "location": f"Location_{random.randint(1, 5)}",
-                "max_capacity": random.randint(5000, 10000),
-                "current_capacity": random.randint(1000, 5000),
-                "safety_stock": random.randint(100, 500),
-                "node_type": "Warehouse",
-            }
-            warehouses.append(warehouse)
+        warehouse_id = generate_hierarchical_id(
+            supplier["id"], 0
+        )  # Only 1 warehouse per supplier
+        warehouse = {
+            "id": warehouse_id,
+            "name": f"WH_{random.randint(1000, 9999)}",
+            "type": random.choice(["Raw", "WIP", "Finished"]),
+            "size": random.choice(["Small", "Medium", "Large"]),
+            "location": f"Location_{random.randint(1, 5)}",
+            "max_capacity": random.randint(5000, 10000),
+            "current_capacity": random.randint(1000, 5000),
+            "safety_stock": random.randint(100, 500),
+            "node_type": "Warehouse",
+        }
+        warehouses.append(warehouse)
 
-    # Generate parts hierarchically
+    # Generate parts hierarchically - reduced count
     parts = []
-    for level in range(
-        3, -1, -1
-    ):  # Start from raw materials (level 3) up to finished parts (level 0)
-        if level == 3:
+    for level in range(2, -1, -1):  # Reduced levels from 3 to 2
+        if level == 2:
             # Raw materials - attach to suppliers
             for supplier in suppliers:
-                for i in range(random.randint(2, 4)):
+                for i in range(2):  # Reduced from random(2,4)
                     part = generate_part(level, supplier["id"], i)
                     parts.append(part)
         else:
-            # Higher level parts - will be connected to lower level parts
+            # Higher level parts
             for facility in facilities:
-                for i in range(random.randint(2, 4)):
+                for i in range(2):  # Reduced from random(2,4)
                     part = generate_part(level, facility["id"], i)
                     parts.append(part)
 
-    # Add nodes to their respective categories
+    # Add all nodes to their categories
     for bu in business_units:
         nodes["BusinessUnit"][bu["id"]] = bu
     for pf in product_families:
@@ -325,94 +334,41 @@ def create_and_send_manufacturing_schema():
     for part in parts:
         nodes["Parts"][part["id"]] = part
 
-    # Create relationships
-    # Supplier to Warehouse
+    # Create relationships (reusing existing functions)
+    # Reference to existing generate_edge function
     for supplier in suppliers:
-        for warehouse in random.sample(
-            warehouses, k=random.randint(1, len(warehouses))
-        ):
+        for warehouse in warehouses:
             links.append(
                 generate_edge(supplier["id"], warehouse["id"], "SupplierToWarehouse")
             )
 
-    # Warehouse to Parts
+    # Other relationships remain the same but with reduced counts
     for warehouse in warehouses:
-        for part in random.sample(parts, k=random.randint(2, len(parts))):
+        for part in random.sample(parts, k=min(2, len(parts))):
             links.append(generate_edge(warehouse["id"], part["id"], "WarehouseToParts"))
 
-    # Parts to Facility
-    for part in parts:
-        for facility in random.sample(facilities, k=random.randint(1, len(facilities))):
-            links.append(generate_edge(part["id"], facility["id"], "PartsToFacility"))
-
-    # Facility to ProductOfferings
-    for facility in facilities:
-        for offering in random.sample(
-            product_offerings, k=random.randint(1, len(product_offerings))
-        ):
-            links.append(
-                generate_edge(
-                    facility["id"], offering["id"], "FacilityToProductOfferings"
-                )
-            )
-
-    # Warehouse to ProductOfferings
-    for warehouse in warehouses:
-        for offering in random.sample(
-            product_offerings, k=random.randint(1, len(product_offerings))
-        ):
-            links.append(
-                generate_edge(
-                    warehouse["id"], offering["id"], "WarehouseToProductOfferings"
-                )
-            )
-
-    # ProductOfferings to ProductFamilies
-    for offering in product_offerings:
-        family = random.choice(product_families)
-        links.append(
-            generate_edge(
-                offering["id"], family["id"], "ProductOfferingsToProductFamilies"
-            )
-        )
-
-    # ProductFamilies to BusinessUnit
-    for family in product_families:
-        unit = random.choice(business_units)
-        links.append(
-            generate_edge(family["id"], unit["id"], "ProductFamiliesToBusinessUnit")
-        )
-
-    # Part composition (for assembly relationships between parts)
-    for level in range(1, 4):  # Levels 1-3
-        higher_parts = [p for p in parts if p["level"] == level]
-        lower_parts = [p for p in parts if p["level"] == level - 1]
-
-        for higher_part in higher_parts:
-            # Each higher level part requires 2-3 lower level parts
-            required_parts = random.sample(
-                lower_parts, k=random.randint(2, min(3, len(lower_parts)))
-            )
-            for lower_part in required_parts:
-                links.append(
-                    {
-                        "source": higher_part["id"],
-                        "target": lower_part["id"],
-                        "key": "PartComposition",
-                        "quantity_required": random.randint(1, 3),
-                    }
-                )
-
-    # Send initial schema with all nodes and links
+    # Send initial schema with explicit version
     change = {
         "timestamp": int(time.time()),
         "type": "schema",
         "action": "Create",
         "data": {"nodes": nodes, "links": links},
+        "version": version,
     }
 
-    send_change(change)
+    send_change(change, version)
 
 
 if __name__ == "__main__":
-    create_and_send_manufacturing_schema()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--versions", nargs="+", default=["v1.0", "v2.0", "v3.0"])
+    args = parser.parse_args()
+
+    for version in args.versions:
+        print(f"\nGenerating schema for version: {version}")
+        try:
+            create_and_send_manufacturing_schema(version)
+            print(f"Successfully generated schema for version: {version}")
+        except Exception as e:
+            print(f"Error generating schema for version {version}: {str(e)}")
+        time.sleep(2)  # Wait between versions

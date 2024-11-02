@@ -1,23 +1,20 @@
 import os
 import json
 import networkx as nx
-from ..config import (
-    NETWORKOBJECT_PATH,
-    GRAPHOBJECT_PATH,
-    STATEARCHIVE_PATH,
-    SCHEMAARCHIVE_PATH,
-)
+from ..config import get_paths
 
 
-async def get_schema_archive_list():
-    archives = os.listdir(SCHEMAARCHIVE_PATH)
+async def get_schema_archive_list(version: str = None):
+    paths = get_paths(version)
+    archives = os.listdir(paths["SCHEMAARCHIVE_PATH"])
     return [
         int(f.split("_")[1].split(".")[0]) for f in archives if f.startswith("schema_")
     ]
 
 
-async def get_specific_schema_archive(timestamp: int):
-    file_path = os.path.join(SCHEMAARCHIVE_PATH, f"schema_{timestamp}.json")
+async def get_specific_schema_archive(timestamp: int, version: str = None):
+    paths = get_paths(version)
+    file_path = os.path.join(paths["SCHEMAARCHIVE_PATH"], f"schema_{timestamp}.json")
     if os.path.exists(file_path):
         with open(file_path, "r") as f:
             return json.load(f)
@@ -25,15 +22,17 @@ async def get_specific_schema_archive(timestamp: int):
         return {"error": "Schema archive not found"}
 
 
-async def get_state_archive_list():
-    archives = os.listdir(STATEARCHIVE_PATH)
+async def get_state_archive_list(version: str = None):
+    paths = get_paths(version)
+    archives = os.listdir(paths["STATEARCHIVE_PATH"])
     return [
         int(f.split("_")[1].split(".")[0]) for f in archives if f.startswith("state_")
     ]
 
 
-async def get_specific_state_archive(timestamp: int):
-    file_path = os.path.join(STATEARCHIVE_PATH, f"state_{timestamp}.json")
+async def get_specific_state_archive(timestamp: int, version: str = None):
+    paths = get_paths(version)
+    file_path = os.path.join(paths["STATEARCHIVE_PATH"], f"state_{timestamp}.json")
     if os.path.exists(file_path):
         with open(file_path, "r") as f:
             return json.load(f)
@@ -41,13 +40,15 @@ async def get_specific_state_archive(timestamp: int):
         return {"error": "State archive not found"}
 
 
-async def get_network_object_timestamps():
-    files = os.listdir(NETWORKOBJECT_PATH)
+async def get_network_object_timestamps(version: str = None):
+    paths = get_paths(version)
+    files = os.listdir(paths["NETWORKOBJECT_PATH"])
     return [int(f.split("_")[1].split(".")[0]) for f in files if f.endswith(".json")]
 
 
-async def get_network_object(timestamp: int):
-    file_path = os.path.join(NETWORKOBJECT_PATH, f"network_{timestamp}.json")
+async def get_network_object(timestamp: int, version: str = None):
+    paths = get_paths(version)
+    file_path = os.path.join(paths["NETWORKOBJECT_PATH"], f"network_{timestamp}.json")
     if os.path.exists(file_path):
         with open(file_path, "r") as f:
             return json.load(f)
@@ -55,13 +56,15 @@ async def get_network_object(timestamp: int):
         return {"error": "Network object not found"}
 
 
-async def get_geometric_object_timestamps():
-    files = os.listdir(GRAPHOBJECT_PATH)
+async def get_geometric_object_timestamps(version: str = None):
+    paths = get_paths(version)
+    files = os.listdir(paths["GRAPHOBJECT_PATH"])
     return [int(f.split("_")[1].split(".")[0]) for f in files if f.endswith(".graphml")]
 
 
-async def get_geometric_object(timestamp: int):
-    file_path = os.path.join(GRAPHOBJECT_PATH, f"graph_{timestamp}.graphml")
+async def get_geometric_object(timestamp: int, version: str = None):
+    paths = get_paths(version)
+    file_path = os.path.join(paths["GRAPHOBJECT_PATH"], f"graph_{timestamp}.graphml")
     if os.path.exists(file_path):
         G = nx.read_graphml(file_path)
         return nx.node_link_data(G)

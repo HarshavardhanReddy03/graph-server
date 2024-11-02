@@ -5,6 +5,7 @@ from time import sleep
 import logging
 import uuid
 import time
+import os
 
 from utils.compression import compress_graph_json
 
@@ -12,13 +13,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 from server.config import (
-    LIVESCHEMA_PATH,
-    SCHEMAARCHIVE_PATH,
+    get_paths,
     redis_client,
     postgres_conn,
-    LIVESTATE_PATH,
-    STATEARCHIVE_PATH,
 )
+
+# Get default paths
+paths = get_paths()
+LIVESTATE_PATH = paths["LIVESTATE_PATH"]
+STATEARCHIVE_PATH = paths["STATEARCHIVE_PATH"]
+SCHEMAARCHIVE_PATH = paths["SCHEMAARCHIVE_PATH"]
+LIVESCHEMA_PATH = paths["LIVESCHEMA_PATH"]
 
 
 def write_to_postgres(timestamp, change_data=None):
@@ -71,29 +76,39 @@ def main_worker():
         latest_change = redis_client.lpop("changes")
         if latest_change:
             change_data = json.loads(latest_change)
+            version = change_data.get("version")
+
+            if not version:
+                logger.warning("No version specified in change data, using default")
+                version = "v1.0"
+
             logger.info(
-                f"Processing change type: {change_data['type']} action: {change_data['action']}"
+                f"Processing change type: {change_data['type']} action: {change_data['action']} version: {version}"
             )
+
+            # Get versioned paths for this change
+            paths = get_paths(version)
+
             if change_data["type"] == "state":
-                process_state_change(change_data)
+                process_state_change(change_data, paths)
             elif change_data["type"] == "schema":
-                process_schema_change(change_data)
+                process_schema_change(change_data, paths)
         else:
             sleep(0.01)  # Wait before checking again
 
 
-def process_state_change(change_data):
+def process_state_change(change_data, paths):
     logger.info(f"Processing state change action: {change_data['action']}")
     try:
         # Read current state, initialize from schema only if it doesn't exist
         try:
-            with open(f"{LIVESTATE_PATH}/current_state.json", "r") as f:
+            with open(f"{paths['LIVESTATE_PATH']}/current_state.json", "r") as f:
                 state_data = json.load(f)
                 if isinstance(state_data, str):
                     state_data = json.loads(state_data)
         except (FileNotFoundError, json.JSONDecodeError):
             # Initialize new state from schema
-            with open(f"{LIVESCHEMA_PATH}/current_schema.json", "r") as f:
+            with open(f"{paths['LIVESCHEMA_PATH']}/current_schema.json", "r") as f:
                 schema_data = json.load(f)
             state_data = {
                 "nodes": {
@@ -125,11 +140,11 @@ def process_state_change(change_data):
                 state_data["links"].extend(new_links)
 
         # Save and archive state
-        with open(f"{LIVESTATE_PATH}/current_state.json", "w") as f:
+        with open(f"{paths['LIVESTATE_PATH']}/current_state.json", "w") as f:
             json.dump(state_data, f, indent=2)
 
         with open(
-            f"{STATEARCHIVE_PATH}/state_{change_data['timestamp']}.json", "w"
+            f"{paths['STATEARCHIVE_PATH']}/state_{change_data['timestamp']}.json", "w"
         ) as f:
             json.dump(state_data, f, indent=2)
 
@@ -141,17 +156,29 @@ def process_state_change(change_data):
         return False
 
 
-def process_schema_change(change_data):
+def process_schema_change(change_data, paths):
     try:
+        # Ensure all required directories exist
+        os.makedirs(paths["LIVESCHEMA_PATH"], exist_ok=True)
+        os.makedirs(paths["LIVESTATE_PATH"], exist_ok=True)
+        os.makedirs(paths["SCHEMAARCHIVE_PATH"], exist_ok=True)
+        os.makedirs(paths["STATEARCHIVE_PATH"], exist_ok=True)
+
         # Read current schema and state
         try:
-            with open(f"{LIVESCHEMA_PATH}/current_schema.json", "r") as f:
+            with open(f"{paths['LIVESCHEMA_PATH']}/current_schema.json", "r") as f:
                 schema_data = json.load(f)
-            with open(f"{LIVESTATE_PATH}/current_state.json", "r") as f:
+            with open(f"{paths['LIVESTATE_PATH']}/current_state.json", "r") as f:
                 state_data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             schema_data = {"nodes": {}, "links": []}
             state_data = {"nodes": {}, "links": []}
+
+            # Create initial files if they don't exist
+            with open(f"{paths['LIVESCHEMA_PATH']}/current_schema.json", "w") as f:
+                json.dump(schema_data, f, indent=2)
+            with open(f"{paths['LIVESTATE_PATH']}/current_state.json", "w") as f:
+                json.dump(state_data, f, indent=2)
 
         if change_data["action"] in ["Create", "Update"]:
             # Process nodes
@@ -204,17 +231,17 @@ def process_schema_change(change_data):
                         schema_data["links"].append(link)
 
         # Save updated schema and state
-        with open(f"{LIVESCHEMA_PATH}/current_schema.json", "w") as f:
+        with open(f"{paths['LIVESCHEMA_PATH']}/current_schema.json", "w") as f:
             json.dump(schema_data, f, indent=2)
-        with open(f"{LIVESTATE_PATH}/current_state.json", "w") as f:
+        with open(f"{paths['LIVESTATE_PATH']}/current_state.json", "w") as f:
             json.dump(state_data, f, indent=2)
 
         # Archive both
         timestamp = change_data["timestamp"]
-        with open(f"{SCHEMAARCHIVE_PATH}/schema_{timestamp}.json", "w") as f:
+        with open(f"{paths['SCHEMAARCHIVE_PATH']}/schema_{timestamp}.json", "w") as f:
             compressed_schema = compress_graph_json(schema_data)
             json.dump(compressed_schema, f, indent=2)
-        with open(f"{STATEARCHIVE_PATH}/state_{timestamp}.json", "w") as f:
+        with open(f"{paths['STATEARCHIVE_PATH']}/state_{timestamp}.json", "w") as f:
             compressed_state = compress_graph_json(state_data)
             json.dump(compressed_state, f, indent=2)
 

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, Literal
+from typing import Dict, Literal, Optional
 
 
 class Change(BaseModel):
@@ -7,3 +7,4 @@ class Change(BaseModel):
     type: Literal["schema", "state"]
     action: str
     data: Dict
+    version: Optional[str] = None

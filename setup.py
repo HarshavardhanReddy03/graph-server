@@ -2,16 +2,17 @@ import os
 
 
 def create_data_folders():
-    folders = [
+    base_folders = [
         "data/livestate",
         "data/statearchive",
         "data/schemaarchive",
         "data/liveschema",
     ]
 
-    for folder in folders:
+    # Create base folders
+    for folder in base_folders:
         os.makedirs(folder, exist_ok=True)
-        print(f"Created folder: {folder}")
+        print(f"Created base folder: {folder}")
 
 
 if __name__ == "__main__":

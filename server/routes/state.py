@@ -1,15 +1,15 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from ..controllers import state
 from ..models.change import Change
 
 router = APIRouter(tags=["state"])
 
 
-@router.get("/state/live")
-async def get_live_state():
-    return await state.get_live_state()
+@router.get("/state/live/{version}")
+async def get_live_state(version: str):
+    return await state.get_live_state(version)
 
 
-@router.post("/state/live/update")
-async def update_live_state(update: Change):
-    return await state.queue_live_state_update(update)
+@router.post("/state/live/{version}/update")
+async def update_live_state(update: Change, version: str):
+    return await state.queue_live_state_update(update, version)
