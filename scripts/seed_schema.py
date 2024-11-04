@@ -1,13 +1,12 @@
 import json
 import random
 import requests
-import time
 import uuid
 from typing import Dict, List
 
 # Configuration variables at the top of the file
-VERSIONS = ["v1.0", "v2.0", "v3.0"]
-BASE_TIMESTAMP = int(time.time())  # Or set a specific timestamp
+VERSIONS = ["v1.0"]
+BASE_TIMESTAMP = 0  # Or set a specific timestamp
 CYCLES_PER_VERSION = 3  # Number of changes to make per version
 
 SCHEMA_CONFIG = {
@@ -20,8 +19,6 @@ SCHEMA_CONFIG = {
     "parts_per_supplier": 2,
     "parts_per_facility": 2,
     "parts_levels": 3,  # 0, 1, 2
-    "time_between_versions": 10,  # seconds between versions
-    "time_between_cycles": 2,  # seconds between cycles within a version
     "change_probability": 0.3,  # probability of changing each node in a cycle
 }
 
@@ -154,7 +151,6 @@ def send_change(change_data, version: str):
     )
     print(f"Sent change: {change_data['action']} for version: {version}")
     print(f"Response: {response.json()}")
-    time.sleep(1)  # Wait between changes
 
 
 def generate_hierarchical_id(parent_id: str = None, sibling_count: int = 0) -> str:
@@ -186,7 +182,7 @@ def create_and_send_manufacturing_schema(
     config = config or SCHEMA_CONFIG
 
     # Use provided timestamp or current time
-    timestamp = base_timestamp or int(time.time())
+    timestamp = base_timestamp
 
     nodes = {
         "BusinessUnit": {},
@@ -327,18 +323,76 @@ def create_and_send_manufacturing_schema(
     for part in parts:
         nodes["Parts"][part["id"]] = part
 
-    # Create relationships (reusing existing functions)
-    # Reference to existing generate_edge function
+    # Create relationships between nodes
+    # 1. SupplierToWarehouse relationships
     for supplier in suppliers:
         for warehouse in warehouses:
+            if get_parent_id(warehouse["id"]) == supplier["id"]:
+                links.append(
+                    generate_edge(
+                        supplier["id"], warehouse["id"], "SupplierToWarehouse"
+                    )
+                )
+
+    # 2. WarehouseToParts relationships
+    for warehouse in warehouses:
+        for part in parts:
+            if part["level"] == 2:  # Raw materials level
+                links.append(
+                    generate_edge(warehouse["id"], part["id"], "WarehouseToParts")
+                )
+
+    # 3. PartsToFacility and FacilityToParts relationships
+    for facility in facilities:
+        facility_parts = [p for p in parts if get_parent_id(p["id"]) == facility["id"]]
+        for part in facility_parts:
+            if part["level"] < 2:  # Manufactured parts
+                links.append(
+                    generate_edge(part["id"], facility["id"], "PartsToFacility")
+                )
+                links.append(
+                    generate_edge(facility["id"], part["id"], "FacilityToParts")
+                )
+
+    # 4. FacilityToProductOfferings relationships
+    for facility in facilities:
+        for po in product_offerings:
+            if get_parent_id(facility["id"]) == po["id"]:
+                links.append(
+                    generate_edge(
+                        facility["id"], po["id"], "FacilityToProductOfferings"
+                    )
+                )
+
+    # 5. WarehouseToProductOfferings relationships
+    for warehouse in warehouses:
+        nearby_facilities = [
+            f for f in facilities if f["location"] == warehouse["location"]
+        ]
+        for facility in nearby_facilities:
+            for po in product_offerings:
+                if get_parent_id(facility["id"]) == po["id"]:
+                    links.append(
+                        generate_edge(
+                            warehouse["id"], po["id"], "WarehouseToProductOfferings"
+                        )
+                    )
+
+    # 6. ProductOfferingsToProductFamilies relationships
+    for po in product_offerings:
+        pf_id = get_parent_id(po["id"])
+        if pf_id:
             links.append(
-                generate_edge(supplier["id"], warehouse["id"], "SupplierToWarehouse")
+                generate_edge(po["id"], pf_id, "ProductOfferingsToProductFamilies")
             )
 
-    # Other relationships remain the same but with reduced counts
-    for warehouse in warehouses:
-        for part in random.sample(parts, k=min(2, len(parts))):
-            links.append(generate_edge(warehouse["id"], part["id"], "WarehouseToParts"))
+    # 7. ProductFamiliesToBusinessUnit relationships
+    for pf in product_families:
+        bu_id = get_parent_id(pf["id"])
+        if bu_id:
+            links.append(
+                generate_edge(pf["id"], bu_id, "ProductFamiliesToBusinessUnit")
+            )
 
     # Create initial schema
     change = {
@@ -399,9 +453,7 @@ if __name__ == "__main__":
 
     for i, version in enumerate(VERSIONS):
         print(f"\nGenerating schema for version: {version}")
-        version_timestamp = BASE_TIMESTAMP + (
-            i * SCHEMA_CONFIG["time_between_versions"]
-        )
+        version_timestamp = BASE_TIMESTAMP
 
         try:
             # Generate initial schema for this version and get the current state
@@ -411,9 +463,7 @@ if __name__ == "__main__":
 
             # Generate cycles of changes based on the previous state
             for cycle in range(CYCLES_PER_VERSION):
-                cycle_timestamp = version_timestamp + (
-                    (cycle + 1) * SCHEMA_CONFIG["time_between_cycles"]
-                )
+                cycle_timestamp = version_timestamp + cycle
 
                 if previous_state:
                     changes = generate_version_changes(previous_state, SCHEMA_CONFIG)
@@ -426,7 +476,6 @@ if __name__ == "__main__":
                             **change,
                         }
                         send_change(change_data, version)
-                        time.sleep(1)  # Brief pause between changes
 
                 previous_state = current_state
 
@@ -434,6 +483,3 @@ if __name__ == "__main__":
 
         except Exception as e:
             print(f"Error generating schema for version {version}: {str(e)}")
-
-        # Wait before starting the next version
-        time.sleep(SCHEMA_CONFIG["time_between_versions"])

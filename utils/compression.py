@@ -44,8 +44,9 @@ def decompress_graph_json(compressed_data: Dict) -> Dict:
         decompressed["nodes"][node_type] = {}
 
         for node_array in compressed_data["data"]["nodes"].get(node_type, []):
-            node_id = node_array[0]
-            node_data = dict(zip(template_keys, node_array[1:]))
+            # Create node data using all values (including ID) with their corresponding keys
+            node_data = dict(zip(template_keys, node_array))
+            node_id = node_array[0]  # First value is always the ID
             decompressed["nodes"][node_type][node_id] = node_data
 
     # Decompress links
