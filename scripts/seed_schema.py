@@ -4,7 +4,26 @@ import requests
 import time
 import uuid
 from typing import Dict, List
-import argparse
+
+# Configuration variables at the top of the file
+VERSIONS = ["v1.0", "v2.0", "v3.0"]
+BASE_TIMESTAMP = int(time.time())  # Or set a specific timestamp
+CYCLES_PER_VERSION = 3  # Number of changes to make per version
+
+SCHEMA_CONFIG = {
+    "business_units": 2,
+    "product_families_per_bu": 2,
+    "product_offerings_per_pf": 2,
+    "facilities_per_po": 1,
+    "suppliers_per_facility": 1,
+    "warehouses_per_supplier": 1,
+    "parts_per_supplier": 2,
+    "parts_per_facility": 2,
+    "parts_levels": 3,  # 0, 1, 2
+    "time_between_versions": 10,  # seconds between versions
+    "time_between_cycles": 2,  # seconds between cycles within a version
+    "change_probability": 0.3,  # probability of changing each node in a cycle
+}
 
 
 def generate_business_unit() -> Dict:
@@ -138,44 +157,6 @@ def send_change(change_data, version: str):
     time.sleep(1)  # Wait between changes
 
 
-def send_schema_action(
-    node_id: str,
-    node_type: str,
-    action_type: str,
-    version: str,
-    units: int = None,
-    properties: Dict = None,
-):
-    timestamp = int(time.time())
-
-    if action_type == "add_units":
-        change_data = {
-            "timestamp": timestamp,
-            "type": "schema",
-            "action": "Update",
-            "data": {
-                "nodes": {
-                    node_type: {
-                        node_id: {"units_in_chain": units, "node_type": node_type}
-                    }
-                },
-                "links": [],
-            },
-        }
-    elif action_type == "update_properties":
-        change_data = {
-            "timestamp": timestamp,
-            "type": "schema",
-            "action": "Update",
-            "data": {
-                "nodes": {node_type: {node_id: {**properties, "node_type": node_type}}},
-                "links": [],
-            },
-        }
-
-    send_change(change_data, version)
-
-
 def generate_hierarchical_id(parent_id: str = None, sibling_count: int = 0) -> str:
     if not parent_id:
         return str(sibling_count + 1)
@@ -195,9 +176,17 @@ def get_child_count(max_child_id: str) -> int:
     return int(max_child_id.split("-")[-1])
 
 
-def create_and_send_manufacturing_schema(version: str):
+def create_and_send_manufacturing_schema(
+    version: str, base_timestamp: int = None, config: Dict = None
+):
     if not version:
         raise ValueError("Version must be specified")
+
+    # Use default config if none provided
+    config = config or SCHEMA_CONFIG
+
+    # Use provided timestamp or current time
+    timestamp = base_timestamp or int(time.time())
 
     nodes = {
         "BusinessUnit": {},
@@ -210,9 +199,9 @@ def create_and_send_manufacturing_schema(version: str):
     }
     links = []
 
-    # Generate business units (level 1) - reduced count
+    # Generate business units (level 1)
     business_units = []
-    for i in range(2):  # Reduced from random(2,4)
+    for i in range(config["business_units"]):
         bu_id = generate_hierarchical_id(sibling_count=i)
         bu = {
             "id": bu_id,
@@ -226,7 +215,7 @@ def create_and_send_manufacturing_schema(version: str):
     # Generate product families (level 2) - reduced count
     product_families = []
     for bu in business_units:
-        for j in range(2):  # Reduced from random(2,4)
+        for j in range(config["product_families_per_bu"]):
             pf_id = generate_hierarchical_id(bu["id"], j)
             pf = {
                 "id": pf_id,
@@ -239,7 +228,7 @@ def create_and_send_manufacturing_schema(version: str):
     # Generate product offerings (level 3) - reduced count
     product_offerings = []
     for pf in product_families:
-        for k in range(2):  # Reduced from random(2,4)
+        for k in range(config["product_offerings_per_pf"]):
             po_id = generate_hierarchical_id(pf["id"], k)
             po = {
                 "id": po_id,
@@ -304,17 +293,21 @@ def create_and_send_manufacturing_schema(version: str):
 
     # Generate parts hierarchically - reduced count
     parts = []
-    for level in range(2, -1, -1):  # Reduced levels from 3 to 2
+    for level in range(config["parts_levels"], -1, -1):  # Reduced levels from 3 to 2
         if level == 2:
             # Raw materials - attach to suppliers
             for supplier in suppliers:
-                for i in range(2):  # Reduced from random(2,4)
+                for i in range(
+                    config["parts_per_supplier"]
+                ):  # Reduced from random(2,4)
                     part = generate_part(level, supplier["id"], i)
                     parts.append(part)
         else:
             # Higher level parts
             for facility in facilities:
-                for i in range(2):  # Reduced from random(2,4)
+                for i in range(
+                    config["parts_per_facility"]
+                ):  # Reduced from random(2,4)
                     part = generate_part(level, facility["id"], i)
                     parts.append(part)
 
@@ -347,9 +340,9 @@ def create_and_send_manufacturing_schema(version: str):
         for part in random.sample(parts, k=min(2, len(parts))):
             links.append(generate_edge(warehouse["id"], part["id"], "WarehouseToParts"))
 
-    # Send initial schema with explicit version
+    # Create initial schema
     change = {
-        "timestamp": int(time.time()),
+        "timestamp": timestamp,
         "type": "schema",
         "action": "Create",
         "data": {"nodes": nodes, "links": links},
@@ -358,17 +351,89 @@ def create_and_send_manufacturing_schema(version: str):
 
     send_change(change, version)
 
+    # Return the current state
+    return {"nodes": nodes, "links": links}
+
+
+def generate_version_changes(previous_state: Dict, config: Dict) -> List[Dict]:
+    changes = []
+    nodes = previous_state["nodes"]
+
+    # Generate changes for each node type
+    for node_type, node_dict in nodes.items():
+        for node_id, node in node_dict.items():
+            if random.random() < config["change_probability"]:
+                # Create a modified copy of the node
+                modified_node = node.copy()
+
+                # Apply type-specific modifications
+                if node_type == "BusinessUnit":
+                    modified_node["revenue"] = round(
+                        random.uniform(1000000, 5000000), 2
+                    )
+                elif node_type == "Facility":
+                    modified_node["operating_cost"] = round(
+                        random.uniform(10000, 50000), 2
+                    )
+                    modified_node["max_capacity"] = random.randint(5000, 10000)
+                elif node_type == "Warehouse":
+                    modified_node["current_capacity"] = random.randint(1000, 5000)
+                    modified_node["safety_stock"] = random.randint(100, 500)
+
+                changes.append(
+                    {
+                        "type": "schema",
+                        "action": "Update",
+                        "data": {
+                            "nodes": {node_type: {node_id: modified_node}},
+                            "links": [],
+                        },
+                    }
+                )
+
+    return changes
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--versions", nargs="+", default=["v1.0", "v2.0", "v3.0"])
-    args = parser.parse_args()
+    previous_state = None
 
-    for version in args.versions:
+    for i, version in enumerate(VERSIONS):
         print(f"\nGenerating schema for version: {version}")
+        version_timestamp = BASE_TIMESTAMP + (
+            i * SCHEMA_CONFIG["time_between_versions"]
+        )
+
         try:
-            create_and_send_manufacturing_schema(version)
-            print(f"Successfully generated schema for version: {version}")
+            # Generate initial schema for this version and get the current state
+            current_state = create_and_send_manufacturing_schema(
+                version=version, base_timestamp=version_timestamp, config=SCHEMA_CONFIG
+            )
+
+            # Generate cycles of changes based on the previous state
+            for cycle in range(CYCLES_PER_VERSION):
+                cycle_timestamp = version_timestamp + (
+                    (cycle + 1) * SCHEMA_CONFIG["time_between_cycles"]
+                )
+
+                if previous_state:
+                    changes = generate_version_changes(previous_state, SCHEMA_CONFIG)
+
+                    # Send each change
+                    for change in changes:
+                        change_data = {
+                            "timestamp": cycle_timestamp,
+                            "version": version,
+                            **change,
+                        }
+                        send_change(change_data, version)
+                        time.sleep(1)  # Brief pause between changes
+
+                previous_state = current_state
+
+            print(f"Successfully generated schema and changes for version: {version}")
+
         except Exception as e:
             print(f"Error generating schema for version {version}: {str(e)}")
-        time.sleep(2)  # Wait between versions
+
+        # Wait before starting the next version
+        time.sleep(SCHEMA_CONFIG["time_between_versions"])
