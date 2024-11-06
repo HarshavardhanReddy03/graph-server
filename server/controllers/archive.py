@@ -7,14 +7,12 @@ from ..config import get_paths
 async def get_schema_archive_list(version: str = None):
     paths = get_paths(version)
     archives = os.listdir(paths["SCHEMAARCHIVE_PATH"])
-    return [
-        int(f.split("_")[1].split(".")[0]) for f in archives if f.startswith("schema_")
-    ]
+    return [int(f.split(".")[0]) for f in archives]
 
 
 async def get_specific_schema_archive(timestamp: int, version: str = None):
     paths = get_paths(version)
-    file_path = os.path.join(paths["SCHEMAARCHIVE_PATH"], f"schema_{timestamp}.json")
+    file_path = os.path.join(paths["SCHEMAARCHIVE_PATH"], f"{timestamp}.json")
     if os.path.exists(file_path):
         with open(file_path, "r") as f:
             return json.load(f)
@@ -25,9 +23,7 @@ async def get_specific_schema_archive(timestamp: int, version: str = None):
 async def get_state_archive_list(version: str = None):
     paths = get_paths(version)
     archives = os.listdir(paths["STATEARCHIVE_PATH"])
-    return [
-        int(f.split("_")[1].split(".")[0]) for f in archives if f.startswith("state_")
-    ]
+    return [int(f.split(".")[0]) for f in archives]
 
 
 async def get_specific_state_archive(timestamp: int, version: str = None):

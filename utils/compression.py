@@ -1,59 +1,64 @@
-from typing import Dict, List, Any
-import json
-
-
-def compress_graph_json(data: Dict) -> Dict:
+def compress_graph_json(graph_data):
     compressed = {
-        "metadata": {"node_types": {}, "keys": {}},
-        "data": {"nodes": {}, "links": []},
+        "directed": graph_data["directed"],
+        "multigraph": graph_data["multigraph"],
+        "graph": graph_data["graph"],
+        "node_types": {},
+        "relationship_types": {},
+        "node_values": {},
+        "link_values": [],
     }
 
     # Compress nodes
-    for node_type, nodes in data.get("nodes", {}).items():
-        if not nodes:
-            continue
+    for node in graph_data["nodes"]:
+        node_type = node["node_type"]
 
-        # Get template of keys from first node
-        template_keys = list(next(iter(nodes.values())).keys())
-        compressed["metadata"]["node_types"][node_type] = template_keys
+        # Store keys for this node type if we haven't seen it before
+        if node_type not in compressed["node_types"]:
+            compressed["node_types"][node_type] = list(node.keys())
+            compressed["node_values"][node_type] = []
 
-        # Convert nodes to array format
-        node_arrays = []
-        for node_id, node_data in nodes.items():
-            node_values = [node_data[key] for key in template_keys]
-            node_arrays.append(node_values)
-
-        compressed["data"]["nodes"][node_type] = node_arrays
+        # Store just the values in order
+        compressed["node_values"][node_type].append(
+            [node[key] for key in compressed["node_types"][node_type]]
+        )
 
     # Compress links
-    if "links" in data:
-        link_template = ["source", "target", "key"]
-        compressed["metadata"]["keys"]["links"] = link_template
-        compressed["data"]["links"] = [
-            [link[key] for key in link_template] for link in data["links"]
-        ]
+    for link in graph_data["links"]:
+        rel_type = link["relationship_type"]
+
+        # Store keys for this relationship type if we haven't seen it before
+        if rel_type not in compressed["relationship_types"]:
+            compressed["relationship_types"][rel_type] = list(link.keys())
+
+        # Store just the values in order
+        compressed["link_values"].append(
+            [link[key] for key in compressed["relationship_types"][rel_type]]
+        )
 
     return compressed
 
 
-def decompress_graph_json(compressed_data: Dict) -> Dict:
-    decompressed = {"nodes": {}, "links": []}
+def decompress_graph_json(compressed_data):
+    decompressed = {
+        "directed": compressed_data["directed"],
+        "multigraph": compressed_data["multigraph"],
+        "graph": compressed_data["graph"],
+        "nodes": [],
+        "links": [],
+    }
 
     # Decompress nodes
-    for node_type, template_keys in compressed_data["metadata"]["node_types"].items():
-        decompressed["nodes"][node_type] = {}
-
-        for node_array in compressed_data["data"]["nodes"].get(node_type, []):
-            # Create node data using all values (including ID) with their corresponding keys
-            node_data = dict(zip(template_keys, node_array))
-            node_id = node_array[0]  # First value is always the ID
-            decompressed["nodes"][node_type][node_id] = node_data
+    for node_type, keys in compressed_data["node_types"].items():
+        for values in compressed_data["node_values"][node_type]:
+            node = dict(zip(keys, values))
+            decompressed["nodes"].append(node)
 
     # Decompress links
-    link_template = compressed_data["metadata"]["keys"]["links"]
-    decompressed["links"] = [
-        dict(zip(link_template, link_data))
-        for link_data in compressed_data["data"]["links"]
-    ]
+    for values in compressed_data["link_values"]:
+        rel_type = values[0]  # Assuming relationship_type is always first
+        keys = compressed_data["relationship_types"][rel_type]
+        link = dict(zip(keys, values))
+        decompressed["links"].append(link)
 
     return decompressed

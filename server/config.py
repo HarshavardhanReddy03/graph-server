@@ -2,12 +2,17 @@ import os
 import redis
 import psycopg2
 
-DEFAULT_VERSION = "v1.0"
+DEFAULT_VERSION = "default"
 
 
 def get_versioned_path(base_path: str, version: str = None) -> str:
     if version is None:
         version = DEFAULT_VERSION
+
+    # create version directory if it doesn't exist
+    if not os.path.exists(os.path.join(base_path, version)):
+        os.makedirs(os.path.join(base_path, version), exist_ok=True)
+
     return os.path.join(base_path, version)
 
 

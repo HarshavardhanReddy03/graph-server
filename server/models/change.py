@@ -1,10 +1,10 @@
 from pydantic import BaseModel
-from typing import Dict, Literal, Optional
+from typing import Literal, Optional, Dict
 
 
 class Change(BaseModel):
-    timestamp: int
+    action: Literal["create", "delete", "update"]
     type: Literal["schema", "state"]
-    action: str
-    data: Dict
+    timestamp: int
+    payload: Dict
     version: Optional[str] = None
