@@ -100,33 +100,6 @@
 				"lead_time": "integer"
 			}
 		},
-		"FacilityToParts": {
-			"source": "Facility",
-			"target": "Parts",
-			"features": {
-				"production_cost": "float",
-				"lead_time": "integer",
-				"quantity_produced": "integer"
-			}
-		},
-		"WarehouseToSubassembly": {
-			"source": "Warehouse",
-			"target": "Parts",
-			"features": {
-				"inventory_level": "integer",
-				"storage_cost": "float"
-			}
-		},
-		"PartsToFacilities": {
-			"source": "Parts",
-			"target": "Facility",
-			"features": {
-				"quantity": "integer",
-				"distance_from_warehouse": "float",
-				"transport_cost": "float",
-				"lead_time": "integer"
-			}
-		},
 		"FacilityToProductOfferings": {
 			"source": "Facility",
 			"target": "ProductOffering",
@@ -134,14 +107,6 @@
 				"product_cost": "float",
 				"lead_time": "integer",
 				"quantity_produced": "integer"
-			}
-		},
-		"WarehouseToProductOfferings": {
-			"source": "Warehouse",
-			"target": "ProductOffering",
-			"features": {
-				"inventory_level": "integer",
-				"storage_cost": "float"
 			}
 		},
 		"ProductOfferingsToProductFamilies": {
