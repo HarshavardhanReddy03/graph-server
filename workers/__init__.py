@@ -7,6 +7,8 @@ import logging
 import uuid
 import time
 import os
+from typing import Optional, Dict, Any
+import fcntl
 
 from .actions import process_schema_create, process_schema_update, process_schema_delete
 
@@ -94,72 +96,13 @@ def main_worker():
             # Get versioned paths for this change
             paths = get_paths(version)
 
-            if change_data["type"] == "state":
-                # process_state_change(change_data, paths)
-                pass
-            elif change_data["type"] == "schema":
-                process_schema_change(change_data, paths)
+            # if change_data["type"] == "state":
+            #     process_state_change(change_data, paths)
+            # elif change_data["type"] == "schema":
+            #     process_schema_change(change_data, paths)
+            process_schema_change(change_data=change_data, paths=paths)
         else:
             sleep(0.01)  # Wait before checking again
-
-
-def process_state_change(change_data, paths):
-    logger.info(f"Processing state change action: {change_data['action']}")
-    try:
-        # Read current state, initialize from schema only if it doesn't exist
-        try:
-            with open(f"{paths['LIVESTATE_PATH']}/current_state.json", "r") as f:
-                state_data = json.load(f)
-                if isinstance(state_data, str):
-                    state_data = json.loads(state_data)
-        except (FileNotFoundError, json.JSONDecodeError):
-            # Initialize new state from schema
-            with open(f"{paths['LIVESCHEMA_PATH']}/current_schema.json", "r") as f:
-                schema_data = json.load(f)
-            state_data = {
-                "nodes": {
-                    node_type: nodes.copy()
-                    for node_type, nodes in schema_data.get("nodes", {}).items()
-                },
-                "links": schema_data.get("links", []).copy(),
-            }
-
-        if not state_data or not isinstance(state_data, dict):
-            state_data = {"nodes": {}, "links": []}
-
-        # Process the state change
-        if change_data["action"] in ["Create", "Update"]:
-            for node_type, nodes in change_data["data"]["nodes"].items():
-                # Ensure node type container exists
-                if node_type not in state_data["nodes"]:
-                    state_data["nodes"][node_type] = {}
-                # Update nodes (both instances and regular nodes)
-                state_data["nodes"][node_type].update(nodes)
-
-            # Update links
-            if "links" in change_data["data"]:
-                new_links = [
-                    link
-                    for link in change_data["data"]["links"]
-                    if link not in state_data["links"]
-                ]
-                state_data["links"].extend(new_links)
-
-        # Save and archive state
-        with open(f"{paths['LIVESTATE_PATH']}/current_state.json", "w") as f:
-            json.dump(state_data, f, indent=2)
-
-        with open(
-            f"{paths['STATEARCHIVE_PATH']}/state_{change_data['timestamp']}.json", "w"
-        ) as f:
-            json.dump(state_data, f, indent=2)
-
-        write_to_postgres(change_data["timestamp"], change_data)
-        return True
-
-    except Exception as e:
-        logger.error(f"Error processing state change: {str(e)}")
-        return False
 
 
 def create_initial_schema_and_state(paths):
@@ -196,48 +139,36 @@ def load_live_state(paths):
         return load_live_state(paths)
 
 
-def save_live_schema(schema_data, paths):
+def save_graph(
+    graph: nx.DiGraph,
+    paths: Dict[str, str],
+    timestamp: Optional[int] = None,
+    is_schema: bool = True,
+):
     try:
-        os.makedirs(paths["LIVESCHEMA_PATH"], exist_ok=True)
-        with open(f"{paths['LIVESCHEMA_PATH']}/current_schema.json", "w") as f:
-            schema_node_link_data = json_graph.node_link_data(schema_data)
-            json.dump(schema_node_link_data, f, indent=2)
-    except (FileNotFoundError, json.JSONDecodeError):
-        create_initial_schema_and_state(paths)
-        save_live_schema(schema_data, paths)
+        if timestamp:
+            if is_schema:
+                path = f"{paths['SCHEMAARCHIVE_PATH']}"
+            else:
+                path = f"{paths['STATEARCHIVE_PATH']}"
+            os.makedirs(path, exist_ok=True)
+            filepath = f"{path}/{timestamp}.json"
+        else:
+            if is_schema:
+                path = f"{paths['LIVESCHEMA_PATH']}"
+            else:
+                path = f"{paths['LIVESTATE_PATH']}"
+            name = "current_schema" if is_schema else "current_state"
+            filepath = f"{path}/{name}.json"
 
+        # Convert graph to node-link format
+        node_link_data = json_graph.node_link_data(graph)
 
-def save_live_state(state_data, paths):
-    try:
-        os.makedirs(paths["LIVESTATE_PATH"], exist_ok=True)
-        with open(f"{paths['LIVESTATE_PATH']}/current_state.json", "w") as f:
-            state_node_link_data = json_graph.node_link_data(state_data)
-            json.dump(state_node_link_data, f, indent=2)
-    except (FileNotFoundError, json.JSONDecodeError):
-        create_initial_schema_and_state(paths)
-        save_live_state(state_data, paths)
-
-
-def save_archive_schema(schema_data, paths, timestamp):
-    try:
-        os.makedirs(paths["SCHEMAARCHIVE_PATH"], exist_ok=True)
-        with open(f"{paths['SCHEMAARCHIVE_PATH']}/{timestamp}.json", "w") as f:
-            schema_node_link_data = json_graph.node_link_data(schema_data)
-            compressed_schema = compress_graph_json(schema_node_link_data)
-            json.dump(compressed_schema, f, indent=2)
+        # Use safe write with file locking
+        safe_write_json(filepath, node_link_data)
     except Exception as e:
-        logger.error(f"Error saving archive schema: {str(e)}")
-
-
-def save_archive_state(state_data, paths, timestamp):
-    try:
-        os.makedirs(paths["STATEARCHIVE_PATH"], exist_ok=True)
-        with open(f"{paths['STATEARCHIVE_PATH']}/{timestamp}.json", "w") as f:
-            state_node_link_data = json_graph.node_link_data(state_data)
-            compressed_state = compress_graph_json(state_node_link_data)
-            json.dump(compressed_state, f, indent=2)
-    except Exception as e:
-        logger.error(f"Error saving archive state: {str(e)}")
+        logger.error(f"Error saving graph: {str(e)}")
+        raise
 
 
 def process_schema_change(change_data, paths):
@@ -249,14 +180,20 @@ def process_schema_change(change_data, paths):
         if change_data["action"] in ["create", "update", "delete"]:
 
             if change_data["action"] == "create":
-                schema_data = process_schema_create(change_data["payload"], schema_data)
+                schema_data, state_data = process_schema_create(
+                    change_data["payload"], schema_data, state_data, CURRENT_TIMESTAMP
+                )
             elif change_data["action"] == "update":
-                schema_data = process_schema_update(change_data["payload"], schema_data)
+                schema_data, state_data = process_schema_update(
+                    change_data["payload"], schema_data, state_data, CURRENT_TIMESTAMP
+                )
             elif change_data["action"] == "delete":
-                schema_data = process_schema_delete(change_data["payload"], schema_data)
+                schema_data, state_data = process_schema_delete(
+                    change_data["payload"], schema_data, state_data, CURRENT_TIMESTAMP
+                )
 
-        save_live_schema(schema_data, paths)
-        save_live_state(state_data, paths)
+        save_graph(schema_data, paths, is_schema=True)
+        save_graph(state_data, paths, is_schema=False)
 
         logger.info(
             f"Current timestamp: {CURRENT_TIMESTAMP}, change timestamp: {change_data['timestamp']}"
@@ -267,8 +204,8 @@ def process_schema_change(change_data, paths):
 
         if change_data["timestamp"] != CURRENT_TIMESTAMP:
             timestamp = change_data["timestamp"]
-            save_archive_schema(schema_data, paths, timestamp)
-            save_archive_state(state_data, paths, timestamp)
+            save_graph(schema_data, paths, timestamp=timestamp, is_schema=True)
+            save_graph(state_data, paths, timestamp=timestamp, is_schema=False)
             CURRENT_TIMESTAMP = timestamp
 
         return True
@@ -276,6 +213,29 @@ def process_schema_change(change_data, paths):
     except Exception as e:
         logger.error(f"Error processing schema change: {str(e)}")
         return False
+
+
+def safe_write_json(filepath: str, data: Dict[str, Any]) -> None:
+    """Safely write JSON data to file with exclusive lock"""
+    temp_path = f"{filepath}.tmp"
+    try:
+        # First write to temp file
+        with open(temp_path, "w") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                json.dump(data, f, indent=2)
+                f.flush()  # Ensure data is written to disk
+                os.fsync(f.fileno())  # Force write to disk
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+
+        # Then atomically rename temp file to target file
+        os.rename(temp_path, filepath)
+    except Exception as e:
+        logger.error(f"Error writing to {filepath}: {str(e)}")
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
 
 
 # Function to start the worker thread

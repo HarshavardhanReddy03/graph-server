@@ -2,6 +2,7 @@
 	"nodes": {
 		"Parts": {
 			"type": "dynamic",
+			"usage": "core",
 			"features": {
 				"id": "string",
 				"name": "string",
@@ -9,11 +10,14 @@
 				"type": "string",
 				"cost": "float",
 				"importance": "integer",
-				"expected_life": "integer"
+				"expected_life": "integer",
+				"units_in_chain": "integer",
+				"expiry": "integer"
 			}
 		},
 		"Supplier": {
 			"type": "static",
+			"usage": "supplement",
 			"features": {
 				"id": "string",
 				"name": "string",
@@ -24,6 +28,7 @@
 		},
 		"Warehouse": {
 			"type": "dynamic",
+			"usage": "supplement",
 			"features": {
 				"id": "string",
 				"name": "string",
@@ -37,6 +42,7 @@
 		},
 		"ProductFamily": {
 			"type": "static",
+			"usage": "core",
 			"features": {
 				"id": "string",
 				"name": "string",
@@ -45,6 +51,7 @@
 		},
 		"ProductOffering": {
 			"type": "static",
+			"usage": "core",
 			"features": {
 				"id": "string",
 				"name": "string",
@@ -54,6 +61,7 @@
 		},
 		"BusinessUnit": {
 			"type": "static",
+			"usage": "core",
 			"features": {
 				"id": "string",
 				"name": "string",
@@ -63,6 +71,7 @@
 		},
 		"Facility": {
 			"type": "dynamic",
+			"usage": "core",
 			"features": {
 				"id": "string",
 				"name": "string",
